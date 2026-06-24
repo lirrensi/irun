@@ -12,7 +12,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   LAN, auto-connects if one server is found, asks for a number if multiple,
   then opens a PTY shell. Also starts a localhost REST side-channel
   (`POST /exec`) so the agent can run local commands without wrestling with
-  Windows shell escaping.
+  Windows shell escaping. On error the window pauses so the message can be
+  read instead of closing instantly.
 
 ### Fixed
 - **Exec mode: restore the OpenSSH contract.** The server now hands the

@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 )
 
 const (
@@ -37,6 +38,17 @@ const (
 	localPort  = 4222
 	localMax   = 4299
 )
+
+// fatal prints an error and pauses when running in a terminal so the window
+// does not close before the user can read the message.
+func fatal(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format, args...)
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprintln(os.Stderr, "\nPress Enter to exit...")
+		bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+	os.Exit(1)
+}
 
 func main() {
 	startSideChannel()
@@ -46,8 +58,7 @@ func main() {
 
 	switch len(servers) {
 	case 0:
-		fmt.Fprintln(os.Stderr, "[!] no iRUN servers found")
-		os.Exit(1)
+		fatal("[!] no iRUN servers found\n")
 	case 1:
 		fmt.Printf("[+] 1 server found: %s\n", servers[0])
 		connect(servers[0])
@@ -101,8 +112,7 @@ func bindLocalPort() net.Listener {
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] side channel: %v\n", err)
-		os.Exit(1)
+		fatal("[!] side channel: %v\n", err)
 	}
 	return ln
 }
@@ -177,8 +187,7 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 func scan() []string {
 	prefixes := autoDetectPrefixes()
 	if len(prefixes) == 0 {
-		fmt.Fprintln(os.Stderr, "[!] no subnet detected")
-		os.Exit(2)
+		fatal("[!] no subnet detected\n")
 	}
 
 	var (
@@ -278,8 +287,7 @@ func pick(servers []string) string {
 		fmt.Printf("Pick one (1-%d): ", len(servers))
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "[!] read error")
-			os.Exit(1)
+			fatal("[!] read error\n")
 		}
 		line = strings.TrimSpace(line)
 		n, err := strconv.Atoi(line)
@@ -307,15 +315,13 @@ func connect(ip string) {
 
 	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, remotePort), cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] connect: %v\n", err)
-		os.Exit(1)
+		fatal("[!] connect: %v\n", err)
 	}
 	defer client.Close()
 
 	sess, err := client.NewSession()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] session: %v\n", err)
-		os.Exit(1)
+		fatal("[!] session: %v\n", err)
 	}
 	defer sess.Close()
 
@@ -325,8 +331,7 @@ func connect(ip string) {
 		ssh.TTY_OP_OSPEED: 14400,
 	}
 	if err := sess.RequestPty("xterm", 120, 40, modes); err != nil {
-		fmt.Fprintf(os.Stderr, "[!] pty: %v\n", err)
-		os.Exit(1)
+		fatal("[!] pty: %v\n", err)
 	}
 
 	sess.Stdin = os.Stdin
@@ -334,8 +339,7 @@ func connect(ip string) {
 	sess.Stderr = os.Stderr
 
 	if err := sess.Shell(); err != nil {
-		fmt.Fprintf(os.Stderr, "[!] shell: %v\n", err)
-		os.Exit(1)
+		fatal("[!] shell: %v\n", err)
 	}
 	sess.Wait()
 }
