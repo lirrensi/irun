@@ -158,7 +158,7 @@ The server distinguishes two modes exactly like OpenSSH:
 
 | Mode    | Trigger                | What happens                                                                                          |
 |---------|------------------------|-------------------------------------------------------------------------------------------------------|
-| **Exec**  | Client sends a command | Args are passed to `exec.Command` directly (no `cmd.exe /c` intermediary, no shell re-quoting).       |
+| **Exec**  | Client sends a command | The raw command string is handed to `cmd.exe /c` (just like OpenSSH hands the command to `bash -c`); the remote shell parses the command. iRUN is a dumb pipe. |
 | **Shell** | Client requests a shell | `cmd.exe` spawned with a PTY, stdin/stdout/stderr bridged, interactive session.                      |
 
 The key insight: Go's `os/exec` passes arguments directly to the OS without

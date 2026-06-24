@@ -16,7 +16,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/gliderlabs/ssh"
 	"github.com/pkg/sftp"
@@ -79,24 +78,20 @@ const (
 //	Exec:  client sent a command → run cmd /c <command>, no PTY, clean output
 //	Shell: client wants interactive  → spawn cmd.exe, bridge I/O
 func shellHandler(s ssh.Session) {
-	if args := s.Command(); len(args) > 0 {
-		// Log every command received.
-		fmt.Printf("  [%s] $ %s\n", s.User(), strings.Join(args, " "))
-		// Exec mode: spawn directly via Go, no cmd.exe intermediary.
-		// shlex.Split already parsed the client's quoting correctly,
-		// so 'apt-get install -y htop' is already one arg.
-		var cmd *exec.Cmd
-		if args[0] == "wsl" {
-			// wsl -d Ubuntu -- apt-get install -y htop
-			// Go passes each arg as a separate OS argument (no shell re-parsing).
-			cmd = exec.Command("wsl", args[1:]...)
-		} else {
-			cmd = exec.Command(args[0], args[1:]...)
-		}
+	if raw := s.RawCommand(); raw != "" {
+		// Exec mode: hand the raw string the client sent to cmd.exe /c.
+		// The remote shell parses the command. iRUN is a dumb pipe.
+		// (OpenSSH sshd does the same with `bash -c <raw>`.)
+		fmt.Printf("  [%s] $ %s\n", s.User(), raw)
+		cmd := exec.Command("cmd.exe", "/c", raw)
 		cmd.Stdout = s
 		cmd.Stderr = s
-		cmd.Stdin = strings.NewReader("")
-		_ = cmd.Run()
+		err := cmd.Run()
+		code := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+		_ = s.Exit(code)
 		return
 	}
 	// Shell mode: interactive cmd.exe, stdin/stdout/stderr bridged.
