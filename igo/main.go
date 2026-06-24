@@ -53,6 +53,11 @@ func fatal(format string, args ...any) {
 func main() {
 	startSideChannel()
 
+	if len(os.Args) > 1 {
+		connect(os.Args[1])
+		return
+	}
+
 	fmt.Println("[*] scanning for iRUN servers ...")
 	servers := scan()
 
@@ -190,6 +195,7 @@ func scan() []string {
 		fatal("[!] no subnet detected\n")
 	}
 
+	local := localIPs()
 	var (
 		mu    sync.Mutex
 		found []string
@@ -204,6 +210,9 @@ func scan() []string {
 				defer wg.Done()
 				defer func() { <-sem }()
 				ip := fmt.Sprintf("%s.%d", pref, n)
+				if local[ip] {
+					return
+				}
 				if isIRUN(ip) {
 					mu.Lock()
 					found = append(found, ip)
@@ -279,6 +288,33 @@ func autoDetectPrefixes() []string {
 	return out
 }
 
+// localIPs returns all IPv4 addresses assigned to this machine.
+func localIPs() map[string]bool {
+	out := map[string]bool{"127.0.0.1": true}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return out
+	}
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip4 := ipnet.IP.To4()
+			if ip4 == nil {
+				continue
+			}
+			out[ip4.String()] = true
+		}
+	}
+	return out
+}
+
 // ---- connection -----------------------------------------------------------
 
 func pick(servers []string) string {
@@ -299,6 +335,10 @@ func pick(servers []string) string {
 }
 
 func connect(ip string) {
+	if localIPs()[ip] {
+		fatal("[!] refusing to connect to this machine (%s)\n", ip)
+	}
+
 	fmt.Printf("[+] connecting to %s ...\n", ip)
 
 	user := os.Getenv("USERNAME")
