@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# Pin bash for every step so the same syntax works on Linux, macOS, and
+# Windows (Git Bash) runners. The default on windows-latest is pwsh,
+# which would choke on `if [ ... ]; then` and `mkdir -p`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # ---- Fast feedback: format + vet + build ----
   build:
@@ -43,9 +50,11 @@ jobs:
       - name: go build (all binaries)
         run: |
           mkdir -p bin
-          go build -trimpath -o bin/iRUN${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
-          go build -trimpath -o bin/iRUN-find${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./find
-          go build -trimpath -o bin/sshr${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./sshr
+          suffix=""
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe"; fi
+          go build -trimpath -o bin/iRUN${suffix} .
+          go build -trimpath -o bin/iRUN-find${suffix} ./find
+          go build -trimpath -o bin/sshr${suffix} ./sshr
 
       - name: go test
         run: go test -race -count=1 ./...
