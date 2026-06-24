@@ -3,16 +3,17 @@
 # Default targets work on any OS with `go` and `make` installed.
 # Windows users can keep using `build.bat` for parity.
 
+# Windows builds append .exe automatically; POSIX leaves it bare.
+ifeq ($(OS),Windows_NT)
+EXE := .exe
+endif
+
 GO        ?= go
 BIN_DIR   ?= bin
 SERVER    := $(BIN_DIR)/iRUN$(EXE)
 SCANNER   := $(BIN_DIR)/iRUN-find$(EXE)
 CLIENT    := $(BIN_DIR)/sshr$(EXE)
-
-# Windows builds append .exe automatically; POSIX leaves it bare.
-ifeq ($(OS),Windows_NT)
-EXE := .exe
-endif
+IGO       := $(BIN_DIR)/igo$(EXE)
 
 # Use the lowercased OS name for the build matrix label.
 ifeq ($(OS),Windows_NT)
@@ -21,11 +22,11 @@ else
 GOOS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 endif
 
-.PHONY: all build server scanner client clean test vet fmt lint run-scan help
+.PHONY: all build server scanner client igo clean test vet fmt lint run-scan help
 
-all: build ## Build all three binaries into bin/
+all: build ## Build all binaries into bin/
 
-build: server scanner client ## Build all three binaries into bin/
+build: server scanner client igo ## Build all binaries into bin/
 
 server: ## Build iRUN (SSH server)
 	@mkdir -p $(BIN_DIR)
@@ -38,6 +39,10 @@ scanner: ## Build iRUN-find (LAN scanner)
 client: ## Build sshr (SSH client)
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -trimpath -ldflags="-s -w" -o $(CLIENT) ./sshr
+
+igo: ## Build igo (human iRUN connector with agent side-channel)
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -trimpath -ldflags="-s -w" -o $(IGO) ./igo
 
 # ---- Quality ----
 

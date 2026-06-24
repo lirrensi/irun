@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- `igo` — single EXE for human interactive login to iRUN servers. Scans the
+  LAN, auto-connects if one server is found, asks for a number if multiple,
+  then opens a PTY shell. Also starts a localhost REST side-channel
+  (`POST /exec`) so the agent can run local commands without wrestling with
+  Windows shell escaping.
+
 ### Fixed
 - **Exec mode: restore the OpenSSH contract.** The server now hands the
   raw command string to `cmd.exe /c` instead of pre-parsing it with

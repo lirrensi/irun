@@ -16,6 +16,7 @@ it before changing behavior.
 main.go                  # iRUN (SSH server) — Windows is the primary target
 find/main.go             # iRUN-find (LAN scanner) — pure Go, cross-platform
 sshr/main.go             # sshr (SSH client)    — pure Go, cross-platform
+igo/main.go              # igo (human connector) — pure Go, cross-platform
 docs/REQUIREMENTS.md     # canonical behavior spec
 Makefile                 # cross-platform dev entry: build, test, lint, clean
 build.bat                # Windows convenience wrapper around `go build`
@@ -35,7 +36,7 @@ build.bat                # Windows convenience wrapper around `go build`
 ## Build, test, lint
 
 ```bash
-make build      # bin/iRUN, bin/iRUN-find, bin/sshr
+make build      # bin/iRUN, bin/iRUN-find, bin/sshr, bin/igo
 make lint       # gofmt -l + go vet
 make test       # go test -race
 ```

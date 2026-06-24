@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8.svg)](./go.mod)
 
-Zero-auth SSH server + LAN scanner + native SSH client. Three binaries. Zero dependencies. Zero prompts. Zero config.
+Zero-auth SSH server + LAN scanner + native SSH client + human connector. Four binaries. Zero dependencies. Zero prompts. Zero config.
 
 ## Why this exists
 
@@ -26,7 +26,7 @@ iRUN strips all of that away. Run the server, connect from any SSH client on the
 
 **Never use on a real-facing server or suffer.** This is a LAN tool. Private network only. If you put this on a VPS with a public IP, you deserve what happens next.
 
-## The three binaries
+## The binaries
 
 ### iRUN — SSH server
 
@@ -98,9 +98,10 @@ iRUN-find.exe
 - Caches results at `%USERPROFILE%\.irun\iRUN-servers.txt`
 - Prints found servers with username@ip
 
-### sshr — SSH client
+### sshr — SSH client (agent-only)
 
-Native Go SSH client. Single binary, zero flags, no config.
+Native Go SSH client. Single binary, zero flags, no config. Used by the agent,
+not the human.
 
 **Usage:**
 ```
@@ -113,6 +114,45 @@ sshr USER@HOST[:2222] ["command"]
 - Auto-detects SSH keys (`~/.ssh/id_ed25519`, `id_rsa`, `id_ecdsa`)
 - For iRUN servers: sends empty password + tries "none" auth automatically
 - No prompts, no host key warnings, no config files
+
+### igo — human connector
+
+Single EXE for humans. Scans, picks, connects.
+
+**Usage:**
+```
+igo
+```
+
+**What it does:**
+- Scans the LAN for iRUN servers on port 2222.
+- Auto-connects if exactly one is found.
+- Asks for a number if several are found.
+- Opens an interactive PTY shell on the chosen server.
+- Also starts a localhost REST side-channel (`POST /exec`) so the agent can
+  run commands on this machine without PowerShell/cmd escaping hell.
+
+**Side-channel API (agent only):**
+```
+POST http://127.0.0.1:<port>/exec
+Content-Type: application/json
+
+{
+  "shell": "cmd",
+  "command": "whoami"
+}
+```
+
+Response:
+```json
+{
+  "stdout": "desktop-xxx\\user\n",
+  "stderr": "",
+  "exit_code": 0
+}
+```
+
+The active port is written to `%USERPROFILE%\.irun\igo.port`.
 
 ## Architecture
 
@@ -176,12 +216,12 @@ Requires Go 1.26+ (the version pinned in [`go.mod`](./go.mod)).
 build.bat
 ```
 
-This drops `iRUN.exe`, `iRUN-find.exe`, and `sshr.exe` in the repo root.
+This drops `iRUN.exe`, `iRUN-find.exe`, `sshr.exe`, and `igo.exe` in the repo root.
 
 ### Make (cross-platform)
 
 ```bash
-make build      # produces bin/iRUN, bin/iRUN-find, bin/sshr (.exe on Windows)
+make build      # produces bin/iRUN, bin/iRUN-find, bin/sshr, bin/igo (.exe on Windows)
 make test       # go test -race
 make lint       # gofmt + go vet
 make run-scan   # build and run iRUN-find against your local /24
@@ -194,6 +234,7 @@ make clean
 go build -o iRUN.exe .
 go build -o iRUN-find.exe ./find
 go build -o sshr.exe ./sshr
+go build -o igo.exe ./igo
 ```
 
 ## Dependencies

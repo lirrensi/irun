@@ -62,9 +62,11 @@ Single `.exe`. Probes every /24 on this machine for port 2222 open. Returns IPs.
 
 ---
 
-## 3. `sshr` — the runner
+## 3. `sshr` — the runner (agent-only)
 
 Single `.exe`. Zero dependencies. Behaves exactly like `ssh` on Linux.
+
+Used by the agent, not the human.
 
 ### The only form
 
@@ -95,6 +97,33 @@ sshr rx@DESKTOP-QENL7EU          (interactive)
 - [ ] Shell mode: PTY, interactive, stdin/stdout bridged
 - [ ] Works against iRUN.exe AND any standard Linux OpenSSH server
 - [ ] Returns within 5 seconds on LAN
+
+---
+
+## 4. `igo` — the human connector
+
+Single `.exe` for humans only.
+
+### Usage
+
+```
+igo
+```
+
+### What it does
+- Scans the LAN for iRUN servers on port 2222.
+- If exactly one is found: connects immediately.
+- If several are found: prints a numbered list and asks the user to type a number.
+- Opens an interactive PTY shell on the chosen server.
+- Starts a localhost REST side-channel (`POST /exec`) so the agent can run
+  commands on this machine without dealing with Windows shell escaping.
+
+### Hard requirements
+- [ ] Single `.exe`. Zero flags. Zero config.
+- [ ] PTY shell only. No exec mode. No file transfer.
+- [ ] Does absolutely nothing else from the human's point of view.
+- [ ] Uses `%USERNAME%` to connect.
+- [ ] No auth prompts, no host key prompts.
 
 ---
 
