@@ -44,8 +44,9 @@ That's it. It prints a banner, opens port 2222, and waits.
 - Exec mode (`ssh user@host "command"`) → runs the command directly, returns output
 - Shell mode (`ssh user@host`) → interactive `cmd.exe`
 - SCP/SFTP works (SFTP subsystem is registered)
+- Agent side channel on port 2223 (`POST /exec`) so the agent can run remote commands without SSH escaping hell
 - Server logs every command received: `[user] $ command here`
-- Firewall rule auto-added on private profile (port 2222)
+- Firewall rule auto-added on private profile (ports 2222, 2223)
 - Close the window → server stops, everything cleans up
 
 **Elevation and the firewall rule**
@@ -117,11 +118,12 @@ sshr USER@HOST[:2222] ["command"]
 
 ### igo — human connector
 
-Single EXE for humans. Scans, picks, connects.
+Single EXE for humans. Scans, picks, connects. Starts nothing.
 
 **Usage:**
 ```
 igo
+igo 192.168.66.78
 ```
 
 **What it does:**
@@ -129,30 +131,8 @@ igo
 - Auto-connects if exactly one is found.
 - Asks for a number if several are found.
 - Opens an interactive PTY shell on the chosen server.
-- Also starts a localhost REST side-channel (`POST /exec`) so the agent can
-  run commands on this machine without PowerShell/cmd escaping hell.
-
-**Side-channel API (agent only):**
-```
-POST http://127.0.0.1:<port>/exec
-Content-Type: application/json
-
-{
-  "shell": "cmd",
-  "command": "whoami"
-}
-```
-
-Response:
-```json
-{
-  "stdout": "desktop-xxx\\user\n",
-  "stderr": "",
-  "exit_code": 0
-}
-```
-
-The active port is written to `%USERPROFILE%\.irun\igo.port`.
+- Never connects to its own machine.
+- Starts no servers, no side channels, nothing else.
 
 ## Architecture
 

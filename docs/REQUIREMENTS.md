@@ -40,6 +40,7 @@ This is the standard SSH wire protocol. Must work against **any SSH server in ex
 - [ ] Zero auth: empty password accepted always
 - [ ] Shell mode: PTY + interactive `cmd.exe`
 - [ ] Exec mode: no PTY, `cmd /c <command>`, stdout/stderr piped back, session closes
+- [ ] Side channel: REST server on `0.0.0.0:2223` for agent command execution
 - [ ] Note: nested double-quote commands routed through `cmd /c`
   suffer cmd.exe's quote-stripping rule (this is a cmd.exe
   limitation, not iRUN's). For complex PowerShell with embedded
@@ -120,10 +121,11 @@ igo
 
 ### Hard requirements
 - [ ] Single `.exe`. Zero flags. Zero config.
-- [ ] PTY shell only. No exec mode. No file transfer.
+- [ ] PTY shell only. No exec mode. No file transfer. No side channel.
 - [ ] Does absolutely nothing else from the human's point of view.
 - [ ] Uses `%USERNAME%` to connect.
 - [ ] No auth prompts, no host key prompts.
+- [ ] Must never connect to its own machine.
 
 ---
 

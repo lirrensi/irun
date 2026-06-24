@@ -10,10 +10,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 - `igo` — single EXE for human interactive login to iRUN servers. Scans the
   LAN, auto-connects if one server is found, asks for a number if multiple,
-  then opens a PTY shell. Also starts a localhost REST side-channel
-  (`POST /exec`) so the agent can run local commands without wrestling with
-  Windows shell escaping. On error the window pauses so the message can be
-  read instead of closing instantly.
+  then opens a PTY shell. Accepts a direct IP argument (`igo 192.168.66.78`).
+  Ignores its own machine. On error the window pauses so the message can be
+  read instead of closing instantly. Starts no servers.
+- `iRUN` side channel — REST server (`POST /exec`) on port 2223 so the agent
+  can run commands on the remote host without SSH escaping hell. The local
+  `igo` client starts nothing.
 
 ### Fixed
 - **Exec mode: restore the OpenSSH contract.** The server now hands the

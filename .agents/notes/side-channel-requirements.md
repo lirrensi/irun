@@ -1,16 +1,15 @@
 # Side channel — Requirements
 
-Local REST server embedded in `igo.exe` on the control machine. Lets the agent
-run commands locally without dealing with Windows shell escaping.
+REST server running on the **remote machine** alongside `iRUN.exe`. Lets the
+agent run commands on the remote host without dealing with SSH shell escaping.
 
 ## What it does
 
-1. Starts automatically when `igo.exe` starts.
-2. Binds a TCP port on localhost (first available in 4222-4299, then OS-assigned).
-3. Exposes REST endpoints for local command execution.
-4. User never interacts with it directly.
-5. Agent discovers the port via `%USERPROFILE%\.irun\igo.port`.
-6. Dies when `igo.exe` exits.
+1. Starts automatically when `iRUN.exe` starts.
+2. Binds `0.0.0.0:2223` on the remote machine.
+3. Exposes REST endpoints for command execution on the remote host.
+4. The local `igo.exe` client starts nothing — it only connects to the remote.
+5. Agent calls the remote side channel directly over the LAN.
 
 ## Endpoints
 
@@ -24,7 +23,7 @@ Returns `{"ok": true}`.
 
 ### Exec
 
-Run a raw command string without local shell re-parsing.
+Run a raw command string on the remote machine without SSH re-parsing.
 
 ```
 POST /exec
@@ -42,8 +41,8 @@ Content-Type: application/json
 
 ## Constraints
 
-- Binds localhost only (127.0.0.1).
-- No auth needed.
+- No auth needed (trusted LAN, same threat model as iRUN SSH).
 - Zero user-facing flags or config.
 - Must bypass PowerShell/cmd escaping hell for the agent.
-- Lifetime tied to the parent `igo.exe` process.
+- Lifetime tied to the parent `iRUN.exe` process.
+- The local `igo.exe` must not run any server.
