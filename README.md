@@ -7,6 +7,17 @@
 
 Zero-auth SSH server + LAN scanner + native SSH client + human connector. Four binaries. Zero dependencies. Zero prompts. Zero config.
 
+## Principle of operation
+
+This is the whole idea. Read it three times if you have to.
+
+1. **Get the archive.** Download or build `iRUN.exe`, `igo.exe`, `iRUN-find.exe`, `sshr.exe`.
+2. **Copy `iRUN.exe` to the remote machine.** Put it on a USB stick, walk it over, double-click it. That machine is now an SSH server.
+3. **Run `igo.exe` on your machine.** It finds the remote iRUN server and opens an interactive shell. No IP to remember, no password, no key.
+4. **Use the agent scripts / side channel from anywhere.** `iRUN-find.exe`, `sshr.exe`, and the side channel on port 2223 let the agent run commands on the remote machine the same way — zero auth, zero escaping hell.
+
+That is it. Remote machine runs the server. Your machine runs the client. USB is just the delivery method.
+
 ## Why this exists
 
 SSH on Windows is painful. The built-in `ssh.exe` always asks for a password. There's no quick way to get a shell on another machine without keys, configs, or passwords. Every existing tool adds layers: `paramiko`, `sshpass`, config files, key generation...
@@ -26,9 +37,30 @@ iRUN strips all of that away. Run the server, connect from any SSH client on the
 
 **Never use on a real-facing server or suffer.** This is a LAN tool. Private network only. If you put this on a VPS with a public IP, you deserve what happens next.
 
+## How it works
+
+```
+Remote machine (#1)                    Your machine (#2)
+┌─────────────────────┐               ┌─────────────────────┐
+│  iRUN.exe           │  ← SSH 2222   │  igo.exe            │
+│  - SSH server       │  ← REST 2223  │  - connects only    │
+│  - side channel     │               │  - starts nothing   │
+│  - SFTP/SCP         │               │                     │
+└─────────────────────┘               └─────────────────────┘
+```
+
+- Put `iRUN.exe` on a USB drive, copy it to the remote machine, run it. That
+  machine is now a server.
+- Run `igo.exe` on your machine. It finds the remote and opens a shell.
+- The agent uses the side channel (`http://remote:2223`) and the other tools
+  to run commands and transfer files on the remote machine without SSH
+  escaping hell.
+
 ## The binaries
 
 ### iRUN — SSH server
+
+**This runs on the remote machine.** Copy it there on a USB stick, double-click it, done.
 
 A single-binary SSH server for Windows. Zero auth handlers means the SSH protocol's "none" authentication is accepted by default.
 
@@ -84,6 +116,20 @@ ssh -o PreferredAuthentications=none -p 2222 user@HOST
 sshr user@HOST:2222 "whoami"
 ```
 
+### File transfer
+
+`iRUN.exe` registers the SFTP subsystem, so any SCP/SFTP client works:
+
+```bash
+# Copy a file from remote to local USB (F:\)
+scp -P 2222 user@192.168.66.78:C:/Users/u/Desktop/file.zip F:/
+
+# Copy a file from local USB to remote
+scp -P 2222 F:/file.zip user@192.168.66.78:C:/Users/u/Desktop/
+```
+
+The agent can also use the side channel for scripted file operations.
+
 ### iRUN-find — LAN scanner
 
 Scans your local /24 subnet for machines running iRUN on port 2222.
@@ -118,7 +164,9 @@ sshr USER@HOST[:2222] ["command"]
 
 ### igo — human connector
 
-Single EXE for humans. Scans, picks, connects. Starts nothing.
+**This runs on your machine.** It connects to the remote iRUN server. It starts nothing.
+
+Single EXE for humans. Scans, picks, connects.
 
 **Usage:**
 ```
@@ -144,6 +192,7 @@ igo 192.168.66.78
 │  Exec mode: Go os/exec → direct process spawn      │
 │  Shell mode: cmd.exe → interactive                  │
 │  SFTP subsystem → scp/sftp support                  │
+│  Side channel → REST command execution on port 2223 │
 │                                                     │
 │  ┌─────────────────────────────────────────────┐    │
 │  │  gliderlabs/ssh v0.3.8                      │    │
@@ -249,6 +298,8 @@ All dependencies are Go modules — no system packages, no DLLs, no Python.
 **Zero deps.** Single binary per tool. No Python, no Node, no DLLs, no configs. Copy and run.
 
 **Zero friction.** No flags, no config files, no host key warnings. `sshr user@host command` — that's the entire interface.
+
+**One server, one client.** `iRUN.exe` runs on the remote machine. `igo.exe` runs on your machine. USB is the courier. Nothing else starts servers.
 
 ## License
 

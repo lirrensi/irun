@@ -1,6 +1,15 @@
 # iRUN — Requirements
 
-The whole system: **drop iRUN.exe, sshr in, get answer. No password, no key, no Python, no config.**
+The whole system: **drop iRUN.exe on the remote machine, run igo on your machine, get a shell. No password, no key, no Python, no config.**
+
+## Principle of operation
+
+1. Get the archive (`iRUN.exe`, `igo.exe`, `iRUN-find.exe`, `sshr.exe`).
+2. Copy `iRUN.exe` to the remote machine — USB, cloud, whatever — and run it there. That machine becomes the server.
+3. Run `igo.exe` on your machine. It finds the remote iRUN server and opens an interactive shell.
+4. Use `iRUN-find.exe`, `sshr.exe`, and the side channel (`http://remote:2223`) so the agent can run commands on the remote machine the same way.
+
+Remote machine = server. Your machine = client. USB is just transport.
 
 ---
 
