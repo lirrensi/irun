@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ---- Fast feedback: format + vet + build ----
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ['1.26']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Verify formatting
+        run: |
+          if [ "$(gofmt -l . | wc -l)" -ne 0 ]; then
+            echo "::error::The following files are not gofmt-clean:"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build (all binaries)
+        run: |
+          mkdir -p bin
+          go build -trimpath -o bin/iRUN${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
+          go build -trimpath -o bin/iRUN-find${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./find
+          go build -trimpath -o bin/sshr${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./sshr
+
+      - name: go test
+        run: go test -race -count=1 ./...
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: irun-${{ matrix.os }}-${{ matrix.go }}
+          path: bin/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---- Supply-chain smoke check ----
+  vuln:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...

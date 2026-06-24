@@ -1,0 +1,52 @@
+# ---- Build output ----
+# Go binaries (manual `go build` and `make build`)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Coverage profiles
+coverage.txt
+coverage.html
+*.coverprofile
+
+# ---- Go workspace ----
+vendor/
+
+# ---- Tooling caches ----
+.cache/
+.gocache/
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# ---- OS junk ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# ---- Logs / temp ----
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ---- Local env / secrets (none today, but guard the pattern) ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
