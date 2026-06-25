@@ -1,16 +1,19 @@
 // sshr: one-shot SSH command runner. No password. No key prompt. No Python.
 //
 //	sshr USER@HOST[:2222] ["command"]
-//	sshr USER@HOST[:2222]               (interactive shell)
+//	sshr USER@HOST[:2222]                    (interactive shell)
+//	echo "command" | sshr USER@HOST[:2222]   (stdin pipe)
 //
-// With command  → Exec mode, no PTY on remote, clean stdout.
-// Without       → Shell mode, PTY, interactive.
+// With explicit command  → Exec mode, no PTY on remote, clean stdout.
+// With piped stdin       → Exec mode, stdin is the command.
+// Without either         → Shell mode, PTY, interactive.
 //
 // Auth: empty password (iRUN), auto-loaded ~/.ssh keys (regular servers).
 package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +25,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, `usage: sshr USER@HOST[:2222] ["command"]`)
+		fmt.Fprintln(os.Stderr, `       echo "command" | sshr USER@HOST[:2222]`)
 		os.Exit(2)
 	}
 
@@ -29,7 +33,13 @@ func main() {
 	client := dial(user, host, port)
 	defer client.Close()
 
-	if len(os.Args) >= 3 {
+	command, err := getCommand()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sshr: %v\n", err)
+		os.Exit(1)
+	}
+
+	if command != "" {
 		// Exec mode: one-shot command, no PTY
 		sess, err := client.NewSession()
 		if err != nil {
@@ -39,7 +49,7 @@ func main() {
 		defer sess.Close()
 		sess.Stdout = os.Stdout
 		sess.Stderr = os.Stderr
-		if err := sess.Run(os.Args[2]); err != nil {
+		if err := sess.Run(command); err != nil {
 			if e, ok := err.(*ssh.ExitError); ok {
 				os.Exit(e.ExitStatus())
 			}
@@ -74,6 +84,35 @@ func main() {
 		os.Exit(1)
 	}
 	sess.Wait()
+}
+
+// getCommand returns the command to execute:
+//   - explicit arg (os.Args[2]) if present
+//   - reads from piped stdin if no arg and stdin is a pipe
+//   - empty string means interactive shell
+func getCommand() (string, error) {
+	if len(os.Args) >= 3 {
+		return os.Args[2], nil
+	}
+
+	// Check if stdin is a pipe / redirected file.
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return "", fmt.Errorf("stdin stat: %w", err)
+	}
+	if (fi.Mode() & os.ModeCharDevice) != 0 {
+		return "", nil // terminal → interactive shell
+	}
+
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", fmt.Errorf("read stdin: %w", err)
+	}
+	cmd := strings.TrimRight(string(data), "\r\n")
+	if cmd == "" {
+		return "", fmt.Errorf("empty command from stdin")
+	}
+	return cmd, nil
 }
 
 // splitTarget parses "USER@HOST:PORT" into parts. PORT defaults to 2222.

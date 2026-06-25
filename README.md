@@ -118,17 +118,27 @@ sshr user@HOST:2222 "whoami"
 
 ### File transfer
 
-`iRUN.exe` registers the SFTP subsystem, so any SCP/SFTP client works:
+Two ways to move files:
+
+**1. `igo push` / `igo pull`** (recommended — zero-host-key-config, zero flags):
 
 ```bash
-# Copy a file from remote to local USB (F:\)
-scp -P 2222 user@192.168.66.78:C:/Users/u/Desktop/file.zip F:/
+igo push C:\local\file.txt C:\Users\u\Desktop\file.txt
+igo pull C:\Users\u\Desktop\file.txt C:\local\file.txt
+```
 
-# Copy a file from local USB to remote
+Remote is auto-discovered via LAN scan. No `user@host:` syntax. No host key
+warnings. No password prompts.
+
+**2. SCP/SFTP** (if you already have a tool):
+
+```bash
+scp -P 2222 user@192.168.66.78:C:/Users/u/Desktop/file.zip F:/
 scp -P 2222 F:/file.zip user@192.168.66.78:C:/Users/u/Desktop/
 ```
 
-The agent can also use the side channel for scripted file operations.
+The SFTP subsystem is registered on the server, so WinSCP, FileZilla, and
+any SCP client also work.
 
 ### iRUN-find — LAN scanner
 
@@ -153,11 +163,14 @@ not the human.
 **Usage:**
 ```
 sshr USER@HOST[:2222] ["command"]
+echo "command" | sshr USER@HOST[:2222]
 ```
 
 **What it does:**
-- Exec mode: `sshr user@host:2222 "whoami"` → runs command, prints output, exits
+- Exec mode (arg): `sshr user@host:2222 "whoami"` → runs command, prints output, exits
+- Exec mode (pipe): `echo "choco install git -y" | sshr user@host` → same, but no quoting hell
 - Shell mode: `sshr user@host` → interactive shell
+- Pipe mode avoids PowerShell quote-stripping — the command reaches the remote shell verbatim
 - Auto-detects SSH keys (`~/.ssh/id_ed25519`, `id_rsa`, `id_ecdsa`)
 - For iRUN servers: sends empty password + tries "none" auth automatically
 - No prompts, no host key warnings, no config files
@@ -166,12 +179,14 @@ sshr USER@HOST[:2222] ["command"]
 
 **This runs on your machine.** It connects to the remote iRUN server. It starts nothing.
 
-Single EXE for humans. Scans, picks, connects.
+Single EXE for humans. Scans, picks, connects, transfers files.
 
 **Usage:**
 ```
-igo
-igo 192.168.66.78
+igo                        # interactive shell (auto-scan)
+igo 192.168.66.78          # interactive shell (direct IP)
+igo push C:\local C:\remote   # upload file to remote
+igo pull C:\remote C:\local   # download file from remote
 ```
 
 **What it does:**
@@ -179,6 +194,8 @@ igo 192.168.66.78
 - Auto-connects if exactly one is found.
 - Asks for a number if several are found.
 - Opens an interactive PTY shell on the chosen server.
+- `push`/`pull` transfer files through the REST side channel (port 2223)
+  — auto-discovers the remote the same way, no `user@host:` syntax needed.
 - Never connects to its own machine.
 - Starts no servers, no side channels, nothing else.
 

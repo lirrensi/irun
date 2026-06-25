@@ -14,13 +14,42 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
+	"sync"
+	"time"
 
 	"github.com/gliderlabs/ssh"
 	"github.com/pkg/sftp"
 	xssh "golang.org/x/crypto/ssh"
 )
+
+// ioTimeout wraps a connection so that every successful read or write
+// extends a deadline. If no I/O happens for the timeout duration, the
+// connection is killed. This catches hung handshakes (e.g. crypto
+// blocked by Windows Update) without limiting active sessions.
+type ioTimeout struct {
+	net.Conn
+	timeout time.Duration
+	mu      sync.Mutex
+}
+
+func (c *ioTimeout) bump() {
+	c.mu.Lock()
+	c.Conn.SetDeadline(time.Now().Add(c.timeout))
+	c.mu.Unlock()
+}
+
+func (c *ioTimeout) Read(b []byte) (int, error) {
+	c.bump()
+	return c.Conn.Read(b)
+}
+
+func (c *ioTimeout) Write(b []byte) (int, error) {
+	c.bump()
+	return c.Conn.Write(b)
+}
 
 // sftpHandler serves the SFTP subsystem so scp/sftp work.
 func sftpHandler(sess ssh.Session) {
@@ -82,6 +111,9 @@ func shellHandler(s ssh.Session) {
 		// Exec mode: hand the raw string the client sent to cmd.exe /c.
 		// The remote shell parses the command. iRUN is a dumb pipe.
 		// (OpenSSH sshd does the same with `bash -c <raw>`.)
+		// No artificial timeout — the session context kills the process
+		// when the client disconnects (no orphans). The client is
+		// responsible for its own timeout.
 		fmt.Printf("  [%s] $ %s\n", s.User(), raw)
 		cmd := exec.Command("cmd.exe", "/c", raw)
 		cmd.Stdout = s
@@ -146,9 +178,17 @@ func main() {
 	server := &ssh.Server{
 		Addr:        listenAddr,
 		HostSigners: []ssh.Signer{signer},
-		IdleTimeout: 0,
-		MaxTimeout:  0,
+		IdleTimeout: 0, // handled by ConnCallback below
+		MaxTimeout:  0, // handled by ConnCallback below
 		Version:     "iRUN_1.0",
+		// ConnCallback wraps every TCP connection with an I/O deadline.
+		// Every successful read/write extends the deadline by 5 minutes.
+		// If the handshake hangs (e.g. crypto blocked by Windows Update),
+		// no I/O happens and the connection dies within 5 minutes. Active
+		// sessions with flowing data never hit the limit.
+		ConnCallback: func(_ ssh.Context, conn net.Conn) net.Conn {
+			return &ioTimeout{Conn: conn, timeout: 5 * time.Minute}
+		},
 	}
 	server.Handle(shellHandler)
 

@@ -50,6 +50,7 @@ This is the standard SSH wire protocol. Must work against **any SSH server in ex
 - [ ] Shell mode: PTY + interactive `cmd.exe`
 - [ ] Exec mode: no PTY, `cmd /c <command>`, stdout/stderr piped back, session closes
 - [ ] Side channel: REST server on `0.0.0.0:2223` for agent command execution
+  and file transfer (`POST /exec`, `PUT /push`, `GET /pull`)
 - [ ] Note: nested double-quote commands routed through `cmd /c`
   suffer cmd.exe's quote-stripping rule (this is a cmd.exe
   limitation, not iRUN's). For complex PowerShell with embedded
@@ -78,21 +79,38 @@ Single `.exe`. Zero dependencies. Behaves exactly like `ssh` on Linux.
 
 Used by the agent, not the human.
 
-### The only form
+### The only forms
 
 ```
 sshr USER@HOST[:2222] ["command"]
+echo "command" | sshr USER@HOST[:2222]
 ```
 
-- With command → **Exec mode**: no PTY on remote, just run and print output
-- Without command → **Shell mode**: PTY, interactive session, stdin/stdout connected
+- With explicit command → **Exec mode**: no PTY, runs command, prints output
+- With piped stdin        → **Exec mode**: stdin is the command (zero quoting)
+- Without either          → **Shell mode**: PTY, interactive session
 
 ### Examples
 
 ```
 sshr u@192.168.66.78:2222 whoami
-sshr cron@45.12.239.149 ls
-sshr rx@DESKTOP-QENL7EU          (interactive)
+echo "choco install git -y" | sshr u@192.168.66.78
+sshr rx@DESKTOP-QENL7EU                  (interactive)
+```
+
+### Quote hell solved
+
+PowerShell strips quotes when passing arguments to native .exes. The pipe
+form bypasses this entirely — the command reaches the remote shell verbatim.
+Use it whenever your command contains nested quotes, `&&`, `|`, `>`, or any
+character that PowerShell would eat.
+
+```
+# Broken (PowerShell eats the quotes):
+sshr u@host "echo ""hello"" & ver"
+
+# Works (pipe is raw bytes):
+"echo ""hello"" & ver" | sshr u@host
 ```
 
 ### Auth strategy (auto, zero prompts)
@@ -118,20 +136,33 @@ Single `.exe` for humans only.
 
 ```
 igo
+igo 192.168.66.78
+igo push C:\local.txt C:\remote.txt
+igo pull C:\remote.txt C:\local.txt
 ```
 
-### What it does
+### What it does (interactive shell mode)
 - Scans the LAN for iRUN servers on port 2222.
 - If exactly one is found: connects immediately.
 - If several are found: prints a numbered list and asks the user to type a number.
 - Opens an interactive PTY shell on the chosen server.
-- Starts a localhost REST side-channel (`POST /exec`) so the agent can run
-  commands on this machine without dealing with Windows shell escaping.
+- Never connects to its own machine.
+- Starts no servers, no side channels.
+
+### File transfer (push / pull)
+- `igo push <local_path> <remote_path>` — uploads a file to the remote
+  machine via the REST side channel (port 2223). Creates parent directories
+  on the remote automatically.
+- `igo pull <remote_path> <local_path>` — downloads a file from the remote
+  machine via the REST side channel.
+- Auto-detects the remote server the same way as shell mode (scan + pick
+  if multiple). Both paths are plain local/remote filesystem paths — no
+  `user@host:` SCP notation needed. The remote is found automatically.
 
 ### Hard requirements
 - [ ] Single `.exe`. Zero flags. Zero config.
-- [ ] PTY shell only. No exec mode. No file transfer. No side channel.
-- [ ] Does absolutely nothing else from the human's point of view.
+- [ ] Interactive shell: PTY only, no exec mode, no side channel.
+- [ ] Push/pull: file transfer only via side channel HTTP API.
 - [ ] Uses `%USERNAME%` to connect.
 - [ ] No auth prompts, no host key prompts.
 - [ ] Must never connect to its own machine.

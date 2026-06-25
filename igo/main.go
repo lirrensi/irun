@@ -13,7 +13,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -26,6 +29,7 @@ import (
 )
 
 const remotePort = 2222
+const sideChannelPort = 2223
 
 // fatal prints an error and pauses when running in a terminal so the window
 // does not close before the user can read the message.
@@ -39,6 +43,23 @@ func fatal(format string, args ...any) {
 }
 
 func main() {
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "push":
+			if len(os.Args) != 4 {
+				fatal("usage: igo push <local_path> <remote_path>\n")
+			}
+			pushCmd(os.Args[2], os.Args[3])
+			return
+		case "pull":
+			if len(os.Args) != 4 {
+				fatal("usage: igo pull <remote_path> <local_path>\n")
+			}
+			pullCmd(os.Args[2], os.Args[3])
+			return
+		}
+	}
+
 	if len(os.Args) > 1 {
 		connect(os.Args[1])
 		return
@@ -189,6 +210,145 @@ func localIPs() map[string]bool {
 		}
 	}
 	return out
+}
+
+// scanSideChannel probes every reachable /24 for an iRUN side channel
+// (port 2223), excluding this machine's own addresses.
+func scanSideChannel() []string {
+	prefixes := autoDetectPrefixes()
+	if len(prefixes) == 0 {
+		fatal("[!] no subnet detected\n")
+	}
+
+	local := localIPs()
+	var (
+		mu    sync.Mutex
+		found []string
+		wg    sync.WaitGroup
+		sem   = make(chan struct{}, 64)
+	)
+	for _, prefix := range prefixes {
+		for i := 1; i < 255; i++ {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(pref string, n int) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				ip := fmt.Sprintf("%s.%d", pref, n)
+				if local[ip] {
+					return
+				}
+				if isSideChannel(ip) {
+					mu.Lock()
+					found = append(found, ip)
+					mu.Unlock()
+				}
+			}(prefix, i)
+		}
+	}
+	wg.Wait()
+	sort.Strings(found)
+	return found
+}
+
+// isSideChannel checks if a host has an iRUN side channel on port 2223.
+func isSideChannel(ip string) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, sideChannelPort), 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// sideChannelHost picks a single remote host for push/pull.
+// If exactly one is found, returns it. If several are found,
+// shows a numbered picker. Exits on none.
+func sideChannelHost(remotes []string) string {
+	switch len(remotes) {
+	case 0:
+		fatal("[!] no iRUN servers found\n")
+	case 1:
+		return remotes[0]
+	default:
+		fmt.Printf("[+] %d servers found:\n", len(remotes))
+		for i, ip := range remotes {
+			fmt.Printf("    %d) %s\n", i+1, ip)
+		}
+		return pick(remotes)
+	}
+	panic("unreachable")
+}
+
+// pushCmd uploads a local file to a remote machine via the side channel.
+func pushCmd(local, remote string) {
+	remotes := scanSideChannel()
+	target := sideChannelHost(remotes)
+
+	f, err := os.Open(local)
+	if err != nil {
+		fatal("[!] open %s: %v\n", local, err)
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		fatal("[!] stat %s: %v\n", local, err)
+	}
+
+	u := fmt.Sprintf("http://%s:%d/push?path=%s", target, sideChannelPort, url.QueryEscape(remote))
+
+	req, err := http.NewRequest(http.MethodPut, u, f)
+	if err != nil {
+		fatal("[!] request: %v\n", err)
+	}
+	req.ContentLength = fi.Size()
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		fatal("[!] push: %v\n", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fatal("[!] push failed (%d): %s\n", resp.StatusCode, string(body))
+	}
+
+	fmt.Printf("[+] %s -> %s:%s\n", local, target, remote)
+}
+
+// pullCmd downloads a remote file from a remote machine via the side channel.
+func pullCmd(remote, local string) {
+	remotes := scanSideChannel()
+	target := sideChannelHost(remotes)
+
+	u := fmt.Sprintf("http://%s:%d/pull?path=%s", target, sideChannelPort, url.QueryEscape(remote))
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(u)
+	if err != nil {
+		fatal("[!] pull: %v\n", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fatal("[!] pull failed (%d): %s\n", resp.StatusCode, string(body))
+	}
+
+	f, err := os.Create(local)
+	if err != nil {
+		fatal("[!] create %s: %v\n", local, err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		fatal("[!] write %s: %v\n", local, err)
+	}
+
+	fmt.Printf("[+] %s:%s -> %s\n", target, remote, local)
 }
 
 func pick(servers []string) string {

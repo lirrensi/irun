@@ -16,6 +16,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `iRUN` side channel — REST server (`POST /exec`) on port 2223 so the agent
   can run commands on the remote host without SSH escaping hell. The local
   `igo` client starts nothing.
+- `igo push` / `igo pull` — file transfer through the side channel.
+  `igo push <local> <remote>` uploads a file to the remote (creates parent
+  directories automatically). `igo pull <remote> <local>` downloads a file.
+  Remote is auto-discovered via LAN scan (same as shell mode). No
+  `user@host:` notation, no flags, no config.
+- `sshr` — exec mode via piped stdin. When no explicit command argument is
+  given and stdin is a pipe/redirect, sshr reads the command from stdin.
+  This lets you run commands on the remote without fighting PowerShell's
+  quote-stripping:
+  ```
+  echo "choco install git -y" | sshr u@host
+  ```
+  Pipe mode passes the command to the remote shell verbatim — no `\"`,
+  no `'` tricks, no nesting.
 
 ### Fixed
 - **Exec mode: restore the OpenSSH contract.** The server now hands the
@@ -31,6 +45,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   instead of always reporting 0. `ssh user@host "exit 7"` now sees 7
   in `$?` / `$LASTEXITCODE` on the client, matching the OpenSSH
   contract.
+- **I/O sliding timeout prevents connection hangs.** Every TCP
+  connection is wrapped with an I/O deadline that auto-extends on
+  every successful read/write. If no I/O happens for 5 minutes
+  (e.g. crypto blocked by Windows Update during handshake), the
+  connection is killed. Active sessions with flowing data never hit
+  the limit because each packet extends the deadline. This replaces
+  the previous IdleTimeout/MaxTimeout setup which couldn't catch
+  crypto-blocked handshakes (the timeouts were checked inside Read()
+  but blocked crypto doesn't reach Read()).
 
 ## [0.1.0] - 2026-06-25
 

@@ -7,12 +7,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -40,6 +43,8 @@ func startSideChannel() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 	mux.HandleFunc("/exec", handleSideChannelExec)
+	mux.HandleFunc("/push", handleSideChannelPush)
+	mux.HandleFunc("/pull", handleSideChannelPull)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", sideChannelPort))
 	if err != nil {
@@ -49,10 +54,10 @@ func startSideChannel() {
 	fmt.Printf("  [+] side channel: http://0.0.0.0:%d\n", sideChannelPort)
 
 	server := &http.Server{
-		Addr:         ln.Addr().String(),
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:    ln.Addr().String(),
+		Handler: mux,
+		// No read or write timeout — file transfers and long
+		// commands may take minutes.
 	}
 	_ = server.Serve(ln)
 }
@@ -78,13 +83,15 @@ func handleSideChannelExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var cmd *exec.Cmd
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
 	switch shell {
 	case "powershell":
-		cmd = exec.Command("powershell.exe", "-Command", req.Command)
+		cmd = exec.CommandContext(ctx, "powershell.exe", "-Command", req.Command)
 	case "pwsh":
-		cmd = exec.Command("pwsh.exe", "-Command", req.Command)
+		cmd = exec.CommandContext(ctx, "pwsh.exe", "-Command", req.Command)
 	default:
-		cmd = exec.Command("cmd.exe", "/c", req.Command)
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/c", req.Command)
 	}
 
 	var outb, errb bytes.Buffer
@@ -106,4 +113,58 @@ func handleSideChannelExec(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func handleSideChannelPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "PUT only", http.StatusMethodNotAllowed)
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, r.Body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func handleSideChannelPull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	io.Copy(w, f)
 }
